@@ -1,0 +1,424 @@
+---
+title: "Projet Modules 4 et 5"
+author: "Emmanuelle BANCEL"
+date: "`2020/07/07`"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+number_sections: no
+self_contained: yes
+code_folding: show
+---
+
+## Objectifs du projet
+L'objectif est l'analyse de données de reséquençage d'un génome bactérien. Les données sont issues de l'article : "Complete Genome Sequences of 13 *Bacillus subtilis* Soil Isolates for Studying Secondary Metabolite Diversity" (doi:10.1128/MRA.01406-19)
+
+*Les commandes ont été lancées sur le cluster de l'IFB et un R notebook généré avec R studio installé en local.*
+
+##  Présentation de l'organisation du répertoire créé pour ce projet
+
+![tree](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/tree.JPG)
+```{bash eval=FALSE}
+[ebancel@clust-slurm-client M4-M5]$ tree
+
+```
+
+## Présentation des data
+
+Données d'entrées :
+
+    Identifiant du run : SRR10390685
+    Génome de référence : NC_000964
+        Gff https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.gff.gz
+        Fasta https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.fna.gz
+
+## Getting raw data
+
+-Téléchargement des données d'entrée depuis les banques publiques
+-identifiant du run SRR10390685
+-Utilisation de *sra-toolkit*
+  -les données sont placées dans FASTQC
+  -rw-rw-r-- 1 ebancel ebancel 2.6G Jul 27 11:23 SRR10390685_1.fastq
+-rw-rw-r-- 1 ebancel ebancel 2.6G Jul 27 11:23 SRR10390685_2.fastq
+
+
+```{bash eval=FALSE}
+module load sra-tools
+srun fasterq-dump -S -p SRR10390685 --outdir ~/M4_M5/FASTQ --threads 1
+ls -lha
+```
+Les données concernant le Génome de référence : NC_000964  sont récupérées directement via wget et placées dans DATA
+
+```{}
+ wget ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.gff.gz
+ 
+ wget ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.fna.gz
+
+ls -lha
+
+-rw-rw-r-- 1 ebancel ebancel 1.2M Jul 31 10:08 GCF_000009045.1_ASM904v1_genomic.fna.gz
+-rw-rw-r-- 1 ebancel ebancel 509K Jul 31 10:07 GCF_000009045.1_ASM904v1_genomic.gff.gz
+
+
+```
+
+## Quality control
+
+- Utilisation de *FastQc* sur les fichiers FastQ
+- Compression des fichiers fastQ
+
+Transférer  le  dossier  fastqc  du  serveur  sur  mon poste  de  travail pour analyser les résultats du logiciel fastqc
+ 
+
+![FastQCread1](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/FastQCread1.JPG)
+
+![FastQCread2](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/FastQCread2.JPG)
+
+
+#### commentaires
+
+Les 2 graphiques représentent la qualité (score Phred, en ordonnée) de chaque base (en abscisse) pour les reads de notre jeu de données. À chaque position du read, la qualité de tous les reads est représentée sous la forme d'un boxplot. La médiane est en rouge. Le code couleur vous indique les scores de très bonne qualité en vert, bonne qualité en orange et mauvaise en rouge. La qualité baisse en fin de reads. 
+
+![seqQuality_read1](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/seqQuality_read1.JPG)
+
+![seqQuality_read2](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/seqQuality_read2.JPG)
+
+- Quel est le nombre de séquence et la taille moyenne des séquences? 
+*Le nombre de séquences est 7066055. La taille moyenne est 150 bp*
+
+```{}
+module load fastqc
+gzip *fastq
+ls -ltrh
+
+module load fastqc
+#attention se mettre ds M4-M5
+srun --cpus-per-task 8 fastqc FASTQ/SRR10390685_1.fastq.gz -o QC/ -t 8
+srun --cpus-per-task 8 fastqc FASTQ/SRR10390685_2.fastq.gz -o QC/ -t 8
+
+ls -ltrh
+
+# autre option srun --cpus-per-task 8 fastqc FASTQ/SRR10390685_*.fastq.gz -o QC/ -t 8
+```
+### Quelle est la profondeur de séquençage?
+
+### Calcul de la profondeur de séquençage théorique
+- On peut l’obtenir en faisant (total bases read1 + total bases read 2)/genome_size. 
+Le nb de reads est dans les rapports de fastqc.
+nb total bases pour read 1 total bases: *1056334498* ; pour read 2 *1062807718*
+
+
+La taille du génome s'obtient en utilisant *samtools faidx genome.fna.* 
+- on génère le fichier :
+GCF_000009045.1_ASM904v1_genomic.fna.fai
+Ensuite il faut faire la somme de la colonne 2  de ce fichier pour avoir la taille complete du genome (avec un awk).
+```{}
+samtools faidx GCF_000009045.1_ASM904v1_genomic.fna
+
+awk 'BEGIN{FS="\t";sum=0}{sum+=$2}END{print "Total genome size is " sum}' GCF_000009045.1_ASM904v1_genomic.fna.fai
+
+```
+Total genome size is **4215606**
+
+La profondeur théorique de séquençage est **502,7X**.
+
+## Nettoyage des reads / reads cleaning
+
+utilisation de *fastp*
+```{}
+module load fastp
+
+srun --cpus-per-task 8 fastp \
+ --in1 FASTQ/SRR10390685_1.fastq.gz \
+ --in2 FASTQ/SRR10390685_2.fastq.gz \
+ -l 100 \
+ --out1 CLEANING/SRR10390685_1.cleaned_filtered.fastq.gz \
+ --out2 CLEANING/SRR10390685_2.cleaned_filtered.fastq.gz \
+ --unpaired1 CLEANING/SRR10390685_singles.fastq.gz \
+ --unpaired2 CLEANING/SRR10390685_singles.fastq.gz \
+ -w 1 \
+ -j CLEANING/fastp.json \
+ -h CLEANING/fastp.html \
+ -t 8
+
+
+ls -ltrh ~/M4-M5/CLEANING/
+```
+### résultats
+
+- Read1 before filtering:
+
+total reads: 7066055
+
+total bases: 1056334498
+
+Q20 bases: 989425011(93.6659%)
+
+Q30 bases: 950850058(90.0141%)
+
+- Read2 before filtering:
+
+total reads: 7066055
+
+total bases: 1062807718
+
+Q20 bases: 975887037(91.8216%)
+
+Q30 bases: 933776181(87.8594%)
+
+- Read1 after filtering:
+
+total reads: 6855141
+
+total bases: 972593291
+
+Q20 bases: 918080212(94.3951%)
+
+Q30 bases: 885808239(91.0769%)
+
+- Read2 aftering filtering:
+
+total reads: 6855141
+
+total bases: 972626525
+
+Q20 bases: 906379990(93.1889%)
+
+Q30 bases: 872179928(89.6726%)
+
+- Filtering result:
+
+reads passed filter: 13710282
+
+reads failed due to low quality: 356126
+
+reads failed due to too many N: 4092
+
+reads failed due to too short: 61610
+
+reads with adapter trimmed: 352768
+
+bases trimmed due to adapters: 5499206
+
+Duplication rate: 1.17555%
+
+Insert size peak (evaluated by paired-end reads): 250
+
+JSON report: CLEANING/fastp.json
+HTML report: CLEANING/fastp.html
+
+
+#### Cleaning
+```{}
+ls -ltrh ~/M4-M5/CLEANING/
+
+--rw-rw-r-- 1 ebancel ebancel 609M Jul 31 10:26 SRR10390685_2.cleaned_filtered.fastq.gz
+--rw-rw-r-- 1 ebancel ebancel 604M Jul 31 10:26 SRR10390685_1.cleaned_filtered.fastq.gz
+--rw-rw-r-- 1 ebancel ebancel 132K Jul 31 10:26 fastp.json
+--rw-rw-r-- 1 ebancel ebancel 475K Jul 31 10:26 fastp.html
+--rw-rw-r-- 1 ebancel ebancel  15M Jul 31 10:26 SRR10390685_singles.fastq.gz
+```
+
+
+#### Quel % de reads sont filtrés et pourquoi?
+
+- Filtering result
+
+reads passed filters:	13.710282 M (97.015110%)
+
+reads with low quality:	356.126000 K (2.519978%)
+
+reads with too many N:	4.092000 K (0.028955%)
+
+reads too short:	61.610000 K (0.435958%)
+
+**3% des reads sont filtrés (faible qualité, trop de N, reads trop courts).**
+
+#### autre possibilité : test multiQC
+
+*MultiQC* permet de regrouper les informations provenant de multiples rapports FastQC. Il regroupe au sein d'une même page toutes les informations provenant de multiples rapports et permet une comparaison facilitée des échantillons.
+```{}
+module load multiqc
+multiqc -d . -o CLEANING
+
+ls -ltrh ~/M4-M5/CLEANING/
+```
+
+### Alignement des reads contre le génome de reférence 
+
+-mapping avec *bwa*
+
+#### srun bwa indexing with bwa
+
+- Pour pouvoir utiliser BWA il faut d’abord indexer le génome de référence avec la commande bwa-index.
+
+
+```{}
+
+module load bwa
+srun bwa index GCF_000009045.1_ASM904v1_genomic.fna  
+#[ebancel@clust-slurm-client DATA]$ srun bwa index GCF_000009045.1_ASM904v1_genomic.fna
+
+
+cd ~/M5 GCF_000009045.1_ASM904v1_genomic.fna  
+srun --cpus-per-task=33 bwa mem \
+  /shared/home/ebancel/M4-M5/DATA/GCF_000009045.1_ASM904v1_genomic.fna  \
+  CLEANING/SRR10390685_1.cleaned_filtered.fastq.gz \
+  CLEANING/SRR10390685_2.cleaned_filtered.fastq.gz \
+  -t 32 \
+  | \
+  samtools view -hbS - > MAPPING/SRR10390685.bam
+  
+  ls -ltrh ~/M5/MAPPING/
+```
+#### après la commande srun bwa index GCF_000009045.1_ASM904v1_genomic.fna
+
+[ebancel@clust-slurm-client DATA]$ ls -lha
+total 20M
+drwxrwxr-x 2 ebancel ebancel 2.0M Aug  6 16:26 .
+drwxrwxr-x 8 ebancel ebancel 2.9M Aug  6 16:20 ..
+-rw-rw-r-- 1 ebancel ebancel 4.1M Jul 31 10:08 GCF_000009045.1_ASM904v1_genomic.fna
+-rw-rw-r-- 1 ebancel ebancel   12 Aug  6 16:26 GCF_000009045.1_ASM904v1_genomic.fna.amb
+-rw-rw-r-- 1 ebancel ebancel   98 Aug  6 16:26 GCF_000009045.1_ASM904v1_genomic.fna.ann
+-rw-rw-r-- 1 ebancel ebancel 4.1M Aug  6 16:26 GCF_000009045.1_ASM904v1_genomic.fna.bwt
+-rw-rw-r-- 1 ebancel ebancel 1.1M Aug  6 16:26 GCF_000009045.1_ASM904v1_genomic.fna.pac
+-rw-rw-r-- 1 ebancel ebancel 2.1M Aug  6 16:26 GCF_000009045.1_ASM904v1_genomic.fna.sa
+-rw-rw-r-- 1 ebancel ebancel 3.5M Jul 31 10:07 GCF_000009045.1_ASM904v1_genomic.gff
+-rw-rw-r-- 1 ebancel ebancel  758 Aug  6 16:04 trmNF.gff
+
+```{}
+
+srun --cpus-per-task=33 bwa mem \
+  /shared/home/ebancel/M4-M5/DATA/GCF_000009045.1_ASM904v1_genomic.fna  \
+  CLEANING/SRR10390685_1.cleaned_filtered.fastq.gz \
+  CLEANING/SRR10390685_2.cleaned_filtered.fastq.gz \
+  -t 32 \
+  | \
+  samtools view -hbS - > MAPPING/SRR10390685.bam
+  
+  ls -ltrh ~/M5/MAPPING/
+```
+-le bam est bien généré
+
+[ebancel@clust-slurm-client MAPPING]$ ls -lha
+total 1.4G
+drwxrwxr-x 2 ebancel ebancel 2.9M Aug  6 16:31 .
+drwxrwxr-x 8 ebancel ebancel 2.9M Aug  6 16:37 ..
+-rw-rw-r-- 1 ebancel ebancel 1.4G Aug  6 16:34 SRR10390685.bam
+
+#### tri du bam
+
+-le fichier SRR10390685.sorted.bam est généré
+
+```{}
+$ samtools sort -o SRR10390685.sorted.bam SRR10390685.bam
+
+```
+#### index du fichier sorted
+-le fichier SRR10390685.sorted.bam.bai est généré. L’index BAI sert à accélerer les manipulation des BAM. Certains outils en ont absolument besoin, d’autres pas.Ici, pas besoin.
+
+```{}
+$ samtools index SRR10390685.sorted.bam
+
+```
+### sametools flagstat sur bam
+
+
+```{}
+$ samtools flagstat SRR10390685.sorted.bam
+
+```
+### sortie avec bam.sorted
+
+$ samtools flagstat SRR10390685.sorted.bam
+
+13726125 + 0 in total (QC-passed reads + QC-failed reads)
+
+0 + 0 secondary
+
+15843 + 0 supplementary
+
+0 + 0 duplicates
+
+12969706 + 0 mapped (94.49% : N/A)
+
+13710282 + 0 paired in sequencing
+
+6855141 + 0 read1
+
+6855141 + 0 read2
+
+12887940 + 0 properly paired (94.00% : N/A)
+
+12911596 + 0 with itself and mate mapped
+
+42267 + 0 singletons (0.31% : N/A)
+
+0 + 0 with mate mapped to a different chr
+
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+
+#### interprétation
+
+- La première ligne indique combien de reads il y a dans le BAM cad ~13M
+- Les supplementary alignments correspondent aux reads qui ont été splités en 2 (car ont un indel dedans)
+- **La ligne 5 indique combien de reads ont été alignés contre le génome: 94% c’est très bien**.
+- La ligne 9 indique, parmis les reads mappés, combien ont une distance entre la mate1 et la mate2 qui correspond à ce qui est attendu. Icila quasi totalité des reads mappent à une bonne distance l’un de l'autre.
+- La ligne 10 indique combien de paires sont mappées. Ce chiffres est plus grand que le précédent car il inclut les reads pour lesquels la distance est plus grande/ plus petite que ce qui est attendu, et aussi les paires pour lesquelles les mates sont mappées sur des chromosomes différents,
+-Les singletons correspondent ici aux reads pour lesquels seule une des deux mates est mappée.
+
+## Extraire dans un fichier BAM les reads chevauchant à au moins 50% le gène trmNF
+
+Il faut extraire uniquement les informations du gène trmNF à partir de fichier gff
+- GCF_000009045.1_ASM904v1_genomic.gff.gz
+
+
+### Récupérer les alignements sur le gène trmNF
+
+#### dezip des fichiers fna et gff
+```{}
+gunzip GCF_000009045.1_ASM904v1_genomic.fna.gz
+gunzip GCF_000009045.1_ASM904v1_genomic.gff.gz
+
+```
+#### Extraire les informations correspondant au gène d'intérêt
+
+```{}
+$ grep trmNF GCF_000009045.1_ASM904v1_genomic.gff | awk '$3=="gene"'> trmNF_gene.gff
+
+#contrôle
+head trmNF_gene.gff
+```
+
+#### Utilisation bedtools intersect
+
+- Recherche info sur outils *bedtools intersect*
+Report the base-pair overlap between sequence alignments and genes.
+*By default, bedtools intersect will report an overlap between A and B so long as there is at least one base pair is overlapping. Yet sometimes you may want to restrict reported overlaps between A and B to cases where the feature in B overlaps at least X% (e.g. 50%) of the A feature. The -f option does exactly this*.
+*-wa write option to see the original record*
+
+- A = fichier BAM
+- B = fichier GFF (restreint au gène d'intérêt)
+```{}
+load module bedtools
+
+#commande intersect
+
+$  srun bedtools intersect -a MAPPING/SRR10390685.bam -b DATA/trmNF_gene.gff -f 0.50 -wa  > RESULTS/reads_on_trmNF_gene.bam
+
+```
+#### Pour connaître le nb de reads qui répondent à la condition il faut utiliser l’option ‘-c’ de samtools view:
+
+ -c       print only the count of matching records
+```{}
+$ samtools view -c reads_on_trmNF_gene.bam
+2848
+```
+ Le nombre de reads chevauchant à au moins 50% le gène trmNF est **2848**.
+
+
+###  Présentation de l'organisation du répertoire créé en fin de projet
+
+![tree_end](C:/Users/ebancel/Documents/Dubii_2020/module5/projet/tree_end.JPG)
